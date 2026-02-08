@@ -22,6 +22,27 @@ class PokemonData:
     def first_type(self):
         return self.df["Type 1"].value_counts()
 
+    def search_filter(self, search_text="", filters=None):
+        df = self.df.copy()
+
+        if filters is None:
+            filters = {}
+
+        if search_text:
+            search_text = search_text.lower()
+            df = df[df.apply(lambda row: row.astype(str).str.lower().str.contains(search_text).any(),axis=1)]
+
+        if filters.get("Legendary"):
+            df = df[df["Legendary"].astype(str).str.lower() == "true"]
+
+        if filters.get("Type"):
+            df = df[
+                (df["Type 1"] == filters["Type"]) |
+                (df["Type 2"] == filters["Type"])
+            ]
+
+        return df
+
 #Sprite loading
 class SpriteLoader:
     def __init__(self, sprites):
@@ -31,7 +52,7 @@ class SpriteLoader:
         dex = str(number)
         current_dex_num = []
 
-        if "Mega " in name or "Primal " in name or "Unbound" in name:
+        if "Mega " in name or "Primal " in name or "Unbound" in name or "Attack Forme" in name or "Defense Forme" in name or "Speed Forme" in name or "Plant Cloak" in name or "Sandy Cloak" in name or "Trash Cloak" in name or "Heat Rotom" in name or "Wash Rotom" in name or "Frost Rotom" in name or "Fan Rotom" in name or "Mow Rotom" in name:
             dex = dex.zfill(5)
         else:
             dex = dex.zfill(4)
@@ -46,13 +67,13 @@ class SpriteLoader:
         return None
 
 #Main home page with pie chart
-class HomePage(ctk.CTkFrame):
+class home(ctk.CTkFrame):
     def __init__(self, master, data: PokemonData):
         super().__init__(master)
         self.data = data
-        self._build()
+        self.build()
 
-    def _build(self):
+    def build(self):
         title = ctk.CTkLabel(self,text="Welcome to Clovadex!\nFirst Type Pie Chart",font=("Arial", 22))
         title.pack(pady=10)
 
@@ -75,15 +96,15 @@ class HomePage(ctk.CTkFrame):
         canvas.draw()
 
 #Pokemon preview page (with stats bar chart)
-class PreviewPage(ctk.CTkFrame):
+class preview(ctk.CTkFrame):
     def __init__(self, master, data: PokemonData, sprite_loader: SpriteLoader):
         super().__init__(master)
         self.data = data
         self.sprite_loader = sprite_loader
         self.current_sprite_image = None
-        self._build()
+        self.build()
 
-    def _build(self):
+    def build(self):
         self.title_label = ctk.CTkLabel(self,text="Select a Pokémon",font=("Arial", 22))
         self.title_label.pack(pady=(10, 5))
 
@@ -137,6 +158,8 @@ class PreviewPage(ctk.CTkFrame):
 class ClovadexApp(ctk.CTk):
     def __init__(self):
         super().__init__()
+        self.active_filters = {}
+        self.filter_window = None
 
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
@@ -150,21 +173,21 @@ class ClovadexApp(ctk.CTk):
 
         self.view_mode = ctk.StringVar(value="home")
 
-        self._build_layout()
-        self._build_sidebar()
-        self._build_pages()
+        self.layouts()
+        self.sidebar()
+        self.menus()
 
         self.update_pokemon_list()
 
-    def _build_layout(self):
+    def layouts(self):
         self.left_frame = ctk.CTkFrame(self, width=300)
         self.left_frame.pack(side="left", fill="y", padx=10, pady=10)
 
         self.right_frame = ctk.CTkFrame(self)
         self.right_frame.pack(side="right", fill="both", expand=True, padx=10, pady=10)
 
-    def _build_sidebar(self):
-        self.switch_button = ctk.CTkButton(self.left_frame,text="Pokémon Preview",command=self.switch_view)
+    def sidebar(self):
+        self.switch_button = ctk.CTkButton(self.left_frame,text="Pokémon Preview",command=self.menu_switch)
         self.switch_button.pack(fill="x", padx=10, pady=(10, 5))
 
         self.search_var = ctk.StringVar()
@@ -175,34 +198,79 @@ class ClovadexApp(ctk.CTk):
         self.scroll_frame = ctk.CTkScrollableFrame(self.left_frame)
         self.scroll_frame.pack(fill="both", expand=True)
 
-    def _build_pages(self):
-        self.home_page = HomePage(self.right_frame, self.data)
-        self.preview_page = PreviewPage(self.right_frame, self.data, self.sprite_loader)
+        self.filter_button = ctk.CTkButton(
+            self.left_frame,
+            text="Filters",
+            command=self.filter
+        )
+        self.filter_button.pack(fill="x", padx=10, pady=5)
 
-        self.home_page.pack(fill="both", expand=True)
+    def menus(self):
+        self.menu_home = home(self.right_frame, self.data)
+        self.menu_preview = preview(self.right_frame, self.data, self.sprite_loader)
 
-    def switch_view(self):
+        self.menu_home.pack(fill="both", expand=True)
+
+    def menu_switch(self):
         if self.view_mode.get() == "home":
             self.view_mode.set("preview")
-            self.home_page.pack_forget()
-            self.preview_page.pack(fill="both", expand=True)
+            self.menu_home.pack_forget()
+            self.menu_preview.pack(fill="both", expand=True)
             self.switch_button.configure(text="Home Page")
         else:
             self.view_mode.set("home")
-            self.preview_page.pack_forget()
-            self.home_page.pack(fill="both", expand=True)
+            self.menu_preview.pack_forget()
+            self.menu_home.pack(fill="both", expand=True)
             self.switch_button.configure(text="Pokémon Preview")
 
     def update_pokemon_list(self, filter_text=""):
         for widget in self.scroll_frame.winfo_children():
             widget.destroy()
 
-        filter_text = filter_text.lower()
+        filtered_df = self.data.search_filter(search_text=filter_text, filters=self.active_filters)
 
-        for name in self.data.mon_names(): #Generates a button per pokemon
-            if filter_text in name.lower():
-                poke_button = ctk.CTkButton(self.scroll_frame,text=name,command=lambda n=name: self.preview_page.show_pokemon(n))
-                poke_button.pack(fill="x", padx=5, pady=3)
+        for _, row in filtered_df.iterrows():
+            name = row["Name"]
+            poke_button = ctk.CTkButton(self.scroll_frame, text=name, command=lambda n=name: self.menu_preview.show_pokemon(n))
+            poke_button.pack(fill="x", padx=5, pady=3)
+
+
+    def filter(self):
+        filter_window = ctk.CTkToplevel(self)
+        filter_window.title("Filters")
+        filter_window.geometry("300x400")
+
+        #Legendary filter
+        legendary_var = ctk.BooleanVar(value=self.active_filters.get("Legendary", False))
+
+        legendary_checkbox = ctk.CTkCheckBox(filter_window, text="Legendary Only", variable=legendary_var)
+        legendary_checkbox.pack(pady=10)
+
+        #Type filter
+        type_label = ctk.CTkLabel(filter_window, text="Type Filter")
+        type_label.pack(pady=(20, 5))
+
+        types = sorted(self.data.df["Type 1"].dropna().unique())
+
+        type_var = ctk.StringVar(value=self.active_filters.get("Type", "None"))
+
+        type_dropdown = ctk.CTkOptionMenu(filter_window, values=["None"] + types, variable=type_var)
+        type_dropdown.pack(pady=5)
+
+        def apply_filters():
+            self.active_filters.clear()
+
+            if legendary_var.get():
+                self.active_filters["Legendary"] = True
+
+            if type_var.get() != "None":
+                self.active_filters["Type"] = type_var.get()
+
+            self.update_pokemon_list(self.search_var.get())
+            filter_window.destroy()
+
+        apply_button = ctk.CTkButton(filter_window, text="Apply Filters", command=apply_filters)
+        apply_button.pack(pady=20)
 
 #Fully running the app (the actual pokedex program)
 if __name__ == "__main__":
