@@ -1,4 +1,4 @@
-import customtkinter as ctk, pandas as pd, matplotlib.pyplot as plt, os
+import customtkinter as ctk, pandas as pd, matplotlib.pyplot as plt, os, random
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from PIL import Image
 
@@ -35,11 +35,20 @@ class PokemonData:
         if filters.get("Legendary"):
             df = df[df["Legendary"].astype(str).str.lower() == "true"]
 
-        if filters.get("Type"):
+        if filters.get("Type1"):
             df = df[
-                (df["Type 1"] == filters["Type"]) |
-                (df["Type 2"] == filters["Type"])
+                (df["Type 1"] == filters["Type1"]) |
+                (df["Type 2"] == filters["Type1"])
             ]
+
+        if filters.get("Type2"):
+            df = df[
+                (df["Type 1"] == filters["Type2"]) |
+                (df["Type 2"] == filters["Type2"])
+            ]
+
+        if filters.get("Generation"):
+            df = df[df["Generation"] == int(filters["Generation"])]
 
         return df
 
@@ -52,7 +61,8 @@ class SpriteLoader:
         dex = str(number)
         current_dex_num = []
 
-        if "Mega " in name or "Primal " in name or "Unbound" in name or "Attack Forme" in name or "Defense Forme" in name or "Speed Forme" in name or "Plant Cloak" in name or "Sandy Cloak" in name or "Trash Cloak" in name or "Heat Rotom" in name or "Wash Rotom" in name or "Frost Rotom" in name or "Fan Rotom" in name or "Mow Rotom" in name:
+        #Sprites (for all forms)
+        if "Mega " in name or "Primal " in name or "Unbound" in name or "Attack Forme" in name or "Defense Forme" in name or "Speed Forme" in name or "Plant Cloak" in name or "Sandy Cloak" in name or "Trash Cloak" in name or "Heat Rotom" in name or "Wash Rotom" in name or "Frost Rotom" in name or "Fan Rotom" in name or "Mow Rotom" in name or "Origin Forme" in name or "Sky Forme" in name or "Zen Mode" in name or "Therian Forme" in name or "Black Kyurem" in name or "White Kyurem" in name or "Resolute Forme" in name or "Pirouette Forme" in name or "Meowstic (Male)" in name or "Meowstic (Female)" in name or "Blade Forme" in name or "Average Size" in name or "Small Size" in name or "Large Size" in name or "Super Size" in name:
             dex = dex.zfill(5)
         else:
             dex = dex.zfill(4)
@@ -105,24 +115,29 @@ class preview(ctk.CTkFrame):
         self.build()
 
     def build(self):
-        self.title_label = ctk.CTkLabel(self,text="Select a Pokémon",font=("Arial", 22))
+        self.title_label = ctk.CTkLabel(self, text="Select a Pokémon", font=("Arial", 22))
         self.title_label.pack(pady=(10, 5))
 
         self.sprite_label = ctk.CTkLabel(self, text="")
         self.sprite_label.pack(pady=5)
 
-        img = Image.open("images/clickbro.png") #placeholder image (because it felt too empty)
-        self.placeholder_image = ctk.CTkImage(light_image=img,dark_image=img,size=(300, 300))
+        #Stats shown through numbers
+        self.stats_text_label = ctk.CTkLabel(self,text="",font=("Arial", 16),justify="left")
+        self.stats_text_label.pack(pady=5)
 
-        self.placeholder_label = ctk.CTkLabel(self,image=self.placeholder_image,text="")
+        #Placeholder image
+        img = Image.open("images/clickbro.png")
+        self.placeholder_image = ctk.CTkImage(light_image=img, dark_image=img, size=(300, 300))
+
+        self.placeholder_label = ctk.CTkLabel(self, image=self.placeholder_image, text="")
         self.placeholder_label.pack(pady=10)
 
         self.fig, self.ax = plt.subplots(figsize=(5, 4))
         self.fig.patch.set_alpha(0)
-        
+
         self.ax.set_facecolor("none")
         self.ax.axis("off")
-        
+
         self.canvas = FigureCanvasTkAgg(self.fig, master=self)
         widget = self.canvas.get_tk_widget()
 
@@ -138,7 +153,15 @@ class preview(ctk.CTkFrame):
         row = self.data.mon_to_details(name)
         stats = [row[col] for col in stat_col]
 
-        self.ax.bar(stat_col, stats)
+        #Bar chart stat text
+        stat_lines = [f"{col}: {row[col]}" for col in stat_col]
+        stats_text = "\n".join(stat_lines)
+        self.stats_text_label.configure(text=stats_text)
+
+        #Bar charts
+        stat_colours = ["#FF5959","#F5AC78","#FAE078","#9DB7F5","#A7DB8D","#C183C1"]
+
+        self.ax.bar(stat_col, stats, color=stat_colours)
         self.ax.set_title(name, color="white")
         self.ax.set_ylabel("Base Stats", color="white")
         self.ax.set_ylim(0, max(stats) + 20)
@@ -198,12 +221,13 @@ class ClovadexApp(ctk.CTk):
         self.scroll_frame = ctk.CTkScrollableFrame(self.left_frame)
         self.scroll_frame.pack(fill="both", expand=True)
 
-        self.filter_button = ctk.CTkButton(
-            self.left_frame,
-            text="Filters",
-            command=self.filter
-        )
+        #Filter button
+        self.filter_button = ctk.CTkButton(self.left_frame,text="Filters",command=self.filter)
         self.filter_button.pack(fill="x", padx=10, pady=5)
+
+        #Random pokemon button
+        self.random_button = ctk.CTkButton(self.left_frame,text="Random Pokemon",command=self.random_pokemon)
+        self.random_button.pack(fill="x", padx=10, pady=(5, 10))
 
     def menus(self):
         self.menu_home = home(self.right_frame, self.data)
@@ -235,42 +259,101 @@ class ClovadexApp(ctk.CTk):
             poke_button.pack(fill="x", padx=5, pady=3)
 
 
-    def filter(self):
-        filter_window = ctk.CTkToplevel(self)
-        filter_window.title("Filters")
-        filter_window.geometry("300x400")
+    def filter(self): #Overall filter window
+
+        if self.filter_window is not None and self.filter_window.winfo_exists():
+            self.filter_window.focus()
+            return
+
+        self.filter_window = ctk.CTkToplevel(self)
+        self.filter_window.title("Filters")
+        self.filter_window.geometry("320x520")
+        self.filter_window.transient(self)
+        self.filter_window.grab_set()
+        self.filter_window.focus()
 
         #Legendary filter
         legendary_var = ctk.BooleanVar(value=self.active_filters.get("Legendary", False))
 
-        legendary_checkbox = ctk.CTkCheckBox(filter_window, text="Legendary Only", variable=legendary_var)
-        legendary_checkbox.pack(pady=10)
+        ctk.CTkCheckBox(self.filter_window,text="Legendary Only",variable=legendary_var).pack(pady=10)
 
-        #Type filter
-        type_label = ctk.CTkLabel(filter_window, text="Type Filter")
-        type_label.pack(pady=(20, 5))
+        #Primary type filter
+        ctk.CTkLabel(self.filter_window, text="Primary Type").pack(pady=(15, 5))
 
         types = sorted(self.data.df["Type 1"].dropna().unique())
 
-        type_var = ctk.StringVar(value=self.active_filters.get("Type", "None"))
+        type1_var = ctk.StringVar(value=self.active_filters.get("Type1", "None"))
 
-        type_dropdown = ctk.CTkOptionMenu(filter_window, values=["None"] + types, variable=type_var)
-        type_dropdown.pack(pady=5)
+        ctk.CTkOptionMenu(self.filter_window,values=["None"] + types,variable=type1_var).pack(pady=5)
 
+        #Secondary type filter
+        ctk.CTkLabel(self.filter_window, text="Secondary Type").pack(pady=(15, 5))
+
+        type2_var = ctk.StringVar(value=self.active_filters.get("Type2", "None"))
+
+        ctk.CTkOptionMenu(self.filter_window,values=["None"] + types,variable=type2_var).pack(pady=5)
+
+        #Generation filter
+        ctk.CTkLabel(self.filter_window, text="Generation").pack(pady=(20, 5))
+
+        generations = sorted(self.data.df["Generation"].dropna().unique())
+        generations = [str(int(gen)) for gen in generations]
+
+        gen_var = ctk.StringVar(value=self.active_filters.get("Generation", "None"))
+
+        ctk.CTkOptionMenu(self.filter_window,values=["None"] + generations,variable=gen_var).pack(pady=5)
+
+        #Apply the filter as a search
         def apply_filters():
             self.active_filters.clear()
 
             if legendary_var.get():
                 self.active_filters["Legendary"] = True
 
-            if type_var.get() != "None":
-                self.active_filters["Type"] = type_var.get()
+            if type1_var.get() != "None":
+                self.active_filters["Type1"] = type1_var.get()
+
+            if type2_var.get() != "None":
+                self.active_filters["Type2"] = type2_var.get()
+
+            if gen_var.get() != "None":
+                self.active_filters["Generation"] = gen_var.get()
 
             self.update_pokemon_list(self.search_var.get())
-            filter_window.destroy()
 
-        apply_button = ctk.CTkButton(filter_window, text="Apply Filters", command=apply_filters)
-        apply_button.pack(pady=20)
+            self.filter_window.grab_release()
+            self.filter_window.destroy()
+            self.filter_window = None
+
+        ctk.CTkButton(self.filter_window,text="Apply Filters",command=apply_filters).pack(pady=25)
+
+        #Closing the window after done with selecting
+        def on_close():
+            self.filter_window.grab_release()
+            self.filter_window.destroy()
+            self.filter_window = None
+
+        self.filter_window.protocol("WM_DELETE_WINDOW", on_close)
+
+    def random_pokemon(self):
+        #Get filtered pokemon list
+        filtered_df = self.data.search_filter(
+            search_text=self.search_var.get(),
+            filters=self.active_filters
+        )
+
+        #This prevents a crash from happening (if no pokemon meet filter requirements)
+        if filtered_df.empty:
+            return
+
+        random_row = filtered_df.sample(1).iloc[0]
+        random_name = random_row["Name"]
+
+        if self.view_mode.get() == "home":
+            self.menu_switch()
+
+        self.menu_preview.show_pokemon(random_name)
+
 
 #Fully running the app (the actual pokedex program)
 if __name__ == "__main__":
